@@ -14,7 +14,7 @@ function main() {
         return;
     }
 
-    let rhombusPositionInfo = new MakePositionInfo(
+    let cubePositionInfo = new MakePositionInfo(
         [-50, 0, -500],
         [0, 0, 0],
         [1, 1, 1],
@@ -29,7 +29,7 @@ function main() {
     const figures = {};
 
     figures["letter"] = new MakeObject(
-        "3d-vertex-shader", "3d-fragment-shader", gl, primitive.cube, rhombusPositionInfo
+        "3d-vertex-shader", "3d-fragment-shader", gl, primitive.cube, cubePositionInfo
     );
 
     window.scene = new MakeScene(gl, figures, cameraInfo);
