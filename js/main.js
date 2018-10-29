@@ -14,14 +14,8 @@ function main() {
         return;
     }
 
-    let positionFInfo = new MakePositionInfo(
-        [-50, 75, -15],
-        [0, 0, 0],
-        [1, 1, 1],
-    );
-
-    let polygonPositionInfo = new MakePositionInfo(
-        [150, 75, -15],
+    let rhombusPositionInfo = new MakePositionInfo(
+        [-50, 0, -500],
         [0, 0, 0],
         [1, 1, 1],
     );
@@ -35,12 +29,8 @@ function main() {
     const figures = {};
 
     figures["letter"] = new MakeObject(
-        "3d-vertex-shader", "3d-fragment-shader", gl, primitive.FsFigure, positionFInfo
+        "3d-vertex-shader", "3d-fragment-shader", gl, primitive.cube, rhombusPositionInfo
     );
-
-    // figures["polygon"] = new MakeObject(
-    //     "3d-vertex-shader", "3d-fragment-shader", gl, primitive.polygon, polygonPositionInfo
-    // );
 
     window.scene = new MakeScene(gl, figures, cameraInfo);
 
@@ -99,6 +89,7 @@ function MakeScene(gl, figures, cameraInfo) {
         // Tell WebGL how to convert from clip space to pixels
         gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
         
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
         // Clear the canvas AND the depth buffer.
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -108,7 +99,7 @@ function MakeScene(gl, figures, cameraInfo) {
         let aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
         var projectionMatrix =
             m4.perspective(this.cameraInfo.RadiansfieldOfView, aspect, 1, 2000);
-
+        
         viewProjectionMatrix = m4.multiply(projectionMatrix, cameraInfo.getMatrix());
 
         for (const key in figures) {
@@ -146,7 +137,7 @@ function MakeObject(vertexShaderId, fragmentShaderId, gl, GeometryFigure, positi
     this.matrix = m4.identity;
     this.worldRotation = 0;
 
-    let color = [Math.random(), Math.random(), Math.random(), 1]; // rgba
+    let color = [0.8, 0, 0.2, 1]; // rgba
 
     // look up atrribute locations
     this.positionLocation = gl.getAttribLocation(this.program, "a_position");
@@ -227,7 +218,6 @@ function MakeObject(vertexShaderId, fragmentShaderId, gl, GeometryFigure, positi
         let worldInverseMatrix = m4.inverse(worldMatrix);
         let worldInverseTransposeMatrix = m4.transpose(worldInverseMatrix);
 
-
         // Set the matrixs.
         gl.uniformMatrix4fv(
             this.worldLocation, false, worldMatrix);
@@ -241,7 +231,7 @@ function MakeObject(vertexShaderId, fragmentShaderId, gl, GeometryFigure, positi
         gl.uniform4fv(this.colorLocation, color);
 
         // set the light direction.
-        gl.uniform3fv(this.lightWorldPositionLocation, [20, 30, 50]);
+        gl.uniform3fv(this.lightWorldPositionLocation, [20, 30, 250]);
 
         // Draw the geometry.
         let primitiveType = gl.TRIANGLES;
