@@ -2,18 +2,7 @@
 
 function main() {
     // Get A WebGL context
-    var canvas = document.getElementById("mainWindow");
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-
-    var gl = canvas.getContext("webgl");
-    gl = WebGLDebugUtils.makeDebugContext(gl, undefined, validateNoneOfTheArgsAreUndefined);
-
-    if (!gl) {
-        Console.error("Failed to get webgl context");
-        return;
-    }
-
+    let render = new MakeRender("mainWindow");
     let cubePositionInfo = new MakePositionInfo(
         [-50, 0, -500],
         [0, 0, 0],
@@ -28,11 +17,11 @@ function main() {
 
     const figures = {};
 
-    figures["letter"] = new MakeObject(
-        "3d-vertex-shader", "3d-fragment-shader", gl, primitive.cube, cubePositionInfo
+    figures["letter"] = new render.MakeObject(
+        "3d-vertex-shader", "3d-fragment-shader", primitive.cube, cubePositionInfo
     );
 
-    window.scene = new MakeScene(gl, figures, cameraInfo);
+    window.scene = new render.MakeScene(figures, cameraInfo);
 
     // Draw the scene.
     function drawScene(now) {
@@ -45,6 +34,193 @@ function main() {
 
     requestAnimationFrame(drawScene);
 
+}
+
+function MakeRender(canvasId) {
+    // Get A WebGL context
+    let canvas = document.getElementById(canvasId);
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let gl = canvas.getContext("webgl");
+    gl = WebGLDebugUtils.makeDebugContext(gl, undefined, validateNoneOfTheArgsAreUndefined);
+
+    if (!gl) {
+        Console.error("Failed to get webgl context");
+        return;
+    }
+
+    this.MakeObject = function (vertexShaderId, fragmentShaderId, GeometryFigure, position) {
+        this.program = webglUtils.createProgramFromScripts(gl, [vertexShaderId, fragmentShaderId]);
+        this.matrix = m4.identity;
+        this.worldRotation = 0;
+
+        let color = [0.8, 0, 0.2, 1]; // rgba
+
+        // look up atrribute locations
+        this.positionLocation = gl.getAttribLocation(this.program, "a_position");
+        this.normalLocation = gl.getAttribLocation(this.program, "a_normal");
+
+        // look up uniform locations
+        this.worldViewProjectionLocation =
+            gl.getUniformLocation(this.program, "u_worldViewProjection");
+        this.worldInverseTransposeLocation =
+            gl.getUniformLocation(this.program, "u_worldInverseTranspose");
+        this.worldLocation =
+            gl.getUniformLocation(this.program, "u_world");
+
+        this.lightWorldPositionLocation =
+            gl.getUniformLocation(this.program, "u_lightWorldPosition");
+
+        this.colorLocation = gl.getUniformLocation(this.program, "u_color");
+
+        // Create a buffer and put three 2d clip space points in it
+        this.positionBuffer = gl.createBuffer();
+        this.position = position;
+
+        setObject = setObject.bind(this);
+        setObject();
+
+        this.normalBuffer = gl.createBuffer();
+        setNormal = setNormal.bind(this);
+        setNormal();
+
+        this.rotationSpeed = -0.5;
+        this.count = GeometryFigure.Primitive.length / 3;
+
+        this.rotate = (delay) => {
+            this.worldRotation += delay * this.rotationSpeed;
+        }
+
+        this.draw = () => {
+            // Tell it to use our programForF (pair of shaders)
+            gl.useProgram(this.program);
+
+            // Turn on the position attribute
+            gl.enableVertexAttribArray(this.positionLocation);
+
+            // Bind the position buffer.
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+
+            // Tell the position attribute how to get data out of positionBuffer (ARRAY_BUFFER)
+            var size = 3;                 // 3 components per iteration
+            var type = gl.FLOAT;          // the data is 32bit floats
+            var normalize = false;        // don't normalize the data
+            var stride = 0;               // 0 = move forward size * sizeof(type) each iteration to get the next position
+            var offset = 0;         // start at the beginning of the buffer
+            gl.vertexAttribPointer(
+                this.positionLocation, size, type, normalize, stride, offset)
+
+            // Turn on the normal attribute
+            gl.enableVertexAttribArray(this.normalLocation);
+
+            // Bind the normal buffer.
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.normalBuffer);
+
+            // Tell the attribute how to get data out of normalBuffer (ARRAY_BUFFER)
+            var size = 3;          // 3 components per iteration
+            var type = gl.FLOAT;   // the data is 32bit floating point values
+            var normalize = false; // normalize the data (convert from 0-255 to 0-1)
+            var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
+            var offset = 0;        // start at the beginning of the buffer
+            gl.vertexAttribPointer(
+                this.normalLocation, size, type, normalize, stride, offset)
+
+            this.matrix = m4.multiply(this.matrix, position.getMatrix())
+
+            // Draw a F at the origin
+            let worldMatrix = m4.yRotation(this.worldRotation);
+
+            // Multiply the matrices.
+            let worldViewProjectionMatrix = m4.multiply(this.matrix, worldMatrix);
+            let worldInverseMatrix = m4.inverse(worldMatrix);
+            let worldInverseTransposeMatrix = m4.transpose(worldInverseMatrix);
+
+            // Set the matrixs.
+            gl.uniformMatrix4fv(
+                this.worldLocation, false, worldMatrix);
+            gl.uniformMatrix4fv(this.worldInverseTransposeLocation, false, worldInverseTransposeMatrix);
+            gl.uniformMatrix4fv(
+                this.worldViewProjectionLocation, false,
+                worldViewProjectionMatrix
+            );
+
+            // Set the color to use
+            gl.uniform4fv(this.colorLocation, color);
+
+            // set the light direction.
+            gl.uniform3fv(this.lightWorldPositionLocation, [20, 30, 250]);
+
+            // Draw the geometry.
+            let primitiveType = gl.TRIANGLES;
+            let arrayOffset = 0;
+            gl.drawArrays(primitiveType, arrayOffset, this.count);
+        }
+
+        function setNormal() {
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.normalBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, GeometryFigure.normals, gl.STATIC_DRAW);
+
+        }
+
+        function setObject() {
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+
+            let reversalMatrix = m4.xRotation(Math.PI)
+
+            for (var ii = 0; ii < GeometryFigure.Primitive.length; ii += 3) {
+                var vector = m4.transformPoint(reversalMatrix, [GeometryFigure.Primitive[ii + 0], GeometryFigure.Primitive[ii + 1], GeometryFigure.Primitive[ii + 2], 1]);
+                GeometryFigure.Primitive[ii + 0] = vector[0];
+                GeometryFigure.Primitive[ii + 1] = vector[1];
+                GeometryFigure.Primitive[ii + 2] = vector[2];
+            }
+
+            gl.bufferData(gl.ARRAY_BUFFER, GeometryFigure.Primitive, gl.STATIC_DRAW);
+        }
+    }
+
+    this.MakeScene = function (figures, cameraInfo) {
+        this.figures = figures;
+        this.cameraInfo = cameraInfo;
+        let viewProjectionMatrix = null;
+
+        let before = 0;
+
+        this.draw = function (now) {
+            // time in second
+            now *= 0.001;
+
+            let deleyTime = now - before;
+
+            before = now;
+
+            // Every frame increase the rotation a little.
+            this.figures["letter"].rotate(deleyTime);
+
+            // Tell WebGL how to convert from clip space to pixels
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+            gl.clearColor(0.0, 0.0, 0.0, 1.0);
+            // Clear the canvas AND the depth buffer.
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+            gl.enable(gl.CULL_FACE);
+            gl.enable(gl.DEPTH_TEST);
+
+            let aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+            var projectionMatrix =
+                m4.perspective(this.cameraInfo.RadiansfieldOfView, aspect, 1, 2000);
+
+            viewProjectionMatrix = m4.multiply(projectionMatrix, cameraInfo.getMatrix());
+
+            for (const key in figures) {
+                if (figures.hasOwnProperty(key)) {
+                    figures[key].matrix = viewProjectionMatrix;
+                    figures[key].draw();
+                }
+            }
+        }
+    }
 }
 
 function MakeCameraInfo(cameraPosition, target, degreesFieldOfView) {
@@ -88,7 +264,7 @@ function MakeScene(gl, figures, cameraInfo) {
 
         // Tell WebGL how to convert from clip space to pixels
         gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-        
+
         gl.clearColor(0.0, 0.0, 0.0, 1.0);
         // Clear the canvas AND the depth buffer.
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -99,7 +275,7 @@ function MakeScene(gl, figures, cameraInfo) {
         let aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
         var projectionMatrix =
             m4.perspective(this.cameraInfo.RadiansfieldOfView, aspect, 1, 2000);
-        
+
         viewProjectionMatrix = m4.multiply(projectionMatrix, cameraInfo.getMatrix());
 
         for (const key in figures) {
