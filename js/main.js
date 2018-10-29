@@ -10,6 +10,7 @@ function main() {
     gl = WebGLDebugUtils.makeDebugContext(gl, undefined, validateNoneOfTheArgsAreUndefined);
 
     if (!gl) {
+        Console.error("Failed to get webgl context");
         return;
     }
 
@@ -37,9 +38,9 @@ function main() {
         "3d-vertex-shader", "3d-fragment-shader", gl, primitive.FsFigure, positionFInfo
     );
 
-    figures["polygon"] = new MakeObject(
-        "3d-vertex-shader", "3d-fragment-shader", gl, primitive.polygon, polygonPositionInfo
-    );
+    // figures["polygon"] = new MakeObject(
+    //     "3d-vertex-shader", "3d-fragment-shader", gl, primitive.polygon, polygonPositionInfo
+    // );
 
     window.scene = new MakeScene(gl, figures, cameraInfo);
 
@@ -97,7 +98,7 @@ function MakeScene(gl, figures, cameraInfo) {
 
         // Tell WebGL how to convert from clip space to pixels
         gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-
+        
         // Clear the canvas AND the depth buffer.
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -156,11 +157,13 @@ function MakeObject(vertexShaderId, fragmentShaderId, gl, GeometryFigure, positi
         gl.getUniformLocation(this.program, "u_worldViewProjection");
     this.worldInverseTransposeLocation =
         gl.getUniformLocation(this.program, "u_worldInverseTranspose");
+    this.worldLocation =
+        gl.getUniformLocation(this.program, "u_world");
+
+    this.lightWorldPositionLocation =
+        gl.getUniformLocation(this.program, "u_lightWorldPosition");
 
     this.colorLocation = gl.getUniformLocation(this.program, "u_color");
-
-    this.reverseLightDirectionLocation =
-        gl.getUniformLocation(this.program, "u_reverseLightDirection");
 
     // Create a buffer and put three 2d clip space points in it
     this.positionBuffer = gl.createBuffer();
@@ -224,17 +227,21 @@ function MakeObject(vertexShaderId, fragmentShaderId, gl, GeometryFigure, positi
         let worldInverseMatrix = m4.inverse(worldMatrix);
         let worldInverseTransposeMatrix = m4.transpose(worldInverseMatrix);
 
-        // Set the matrix.
+
+        // Set the matrixs.
+        gl.uniformMatrix4fv(
+            this.worldLocation, false, worldMatrix);
+        gl.uniformMatrix4fv(this.worldInverseTransposeLocation, false, worldInverseTransposeMatrix);
         gl.uniformMatrix4fv(
             this.worldViewProjectionLocation, false,
-            worldViewProjectionMatrix);
-        gl.uniformMatrix4fv(this.worldInverseTransposeLocation, false, worldInverseTransposeMatrix);
+            worldViewProjectionMatrix
+        );
 
         // Set the color to use
         gl.uniform4fv(this.colorLocation, color);
 
         // set the light direction.
-        gl.uniform3fv(this.reverseLightDirectionLocation, m4.normalize([0.5, 0.7, 1]));
+        gl.uniform3fv(this.lightWorldPositionLocation, [20, 30, 50]);
 
         // Draw the geometry.
         let primitiveType = gl.TRIANGLES;
@@ -289,6 +296,5 @@ function validateNoneOfTheArgsAreUndefined(functionName, args) {
 function throwOnGLError(err, funcName, args) {
     throw WebGLDebugUtils.glEnumToString(err) + " was caused by call to: " + funcName;
 }
-
 
 main();
