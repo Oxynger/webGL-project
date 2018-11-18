@@ -15,13 +15,17 @@ function main() {
         60,
     );
 
+    render.compileProgram("3d-vertex-shader", "3d-fragment-shader");
+
     const figures = {};
-
     figures["letter"] = new render.MakeObject(
-        "3d-vertex-shader", "3d-fragment-shader", primitive.cube, cubePositionInfo
+        primitive.cube, cubePositionInfo
     );
+    
+    const lights = {};
+    lights["spotLight"] = new render.MakeSpotlight();
 
-    window.scene = new render.MakeScene(figures, cameraInfo);
+    window.scene = new render.MakeScene(figures, lights, cameraInfo);
 
     // Draw the scene.
     function drawScene(now) {
@@ -44,34 +48,38 @@ function MakeRender(canvasId) {
     let gl = canvas.getContext("webgl");
     gl = WebGLDebugUtils.makeDebugContext(gl, undefined, validateNoneOfTheArgsAreUndefined);
 
+    let program;
+
     if (!gl) {
         Console.error("Failed to get webgl context");
         return;
     }
 
-    this.MakeObject = function (vertexShaderId, fragmentShaderId, GeometryFigure, position) {
-        this.program = webglUtils.createProgramFromScripts(gl, [vertexShaderId, fragmentShaderId]);
+    this.MakeObject = function (GeometryFigure, position) {
         this.matrix = m4.identity;
         this.worldRotation = 0;
+        this.viewPosition = [];
 
         let color = [0.8, 0, 0.2, 1]; // rgba
 
         // look up atrribute locations
-        this.positionLocation = gl.getAttribLocation(this.program, "a_position");
-        this.normalLocation = gl.getAttribLocation(this.program, "a_normal");
+        this.positionLocation = gl.getAttribLocation(program, "a_position");
+        this.normalLocation = gl.getAttribLocation(program, "a_normal");
 
         // look up uniform locations
+        this.viewWorldPositionLocation = 
+            gl.getUniformLocation(program, "u_viewWorldPosition");
         this.worldViewProjectionLocation =
-            gl.getUniformLocation(this.program, "u_worldViewProjection");
+            gl.getUniformLocation(program, "u_worldViewProjection");
         this.worldInverseTransposeLocation =
-            gl.getUniformLocation(this.program, "u_worldInverseTranspose");
+            gl.getUniformLocation(program, "u_worldInverseTranspose");
         this.worldLocation =
-            gl.getUniformLocation(this.program, "u_world");
+            gl.getUniformLocation(program, "u_world");
 
         this.lightWorldPositionLocation =
-            gl.getUniformLocation(this.program, "u_lightWorldPosition");
+            gl.getUniformLocation(program, "u_lightWorldPosition");
 
-        this.colorLocation = gl.getUniformLocation(this.program, "u_color");
+        this.colorLocation = gl.getUniformLocation(program, "u_color");
 
         // Create a buffer and put three 2d clip space points in it
         this.positionBuffer = gl.createBuffer();
@@ -93,7 +101,7 @@ function MakeRender(canvasId) {
 
         this.draw = () => {
             // Tell it to use our programForF (pair of shaders)
-            gl.useProgram(this.program);
+            gl.useProgram(program);
 
             // Turn on the position attribute
             gl.enableVertexAttribArray(this.positionLocation);
@@ -149,6 +157,9 @@ function MakeRender(canvasId) {
 
             // set the light direction.
             gl.uniform3fv(this.lightWorldPositionLocation, [20, 30, 250]);
+            // Bind shader figures letter with camera position
+            gl.uniform3fv(this.viewWorldPositionLocation, this.viewPosition);
+
 
             // Draw the geometry.
             let primitiveType = gl.TRIANGLES;
@@ -178,7 +189,7 @@ function MakeRender(canvasId) {
         }
     }
 
-    this.MakeScene = function (figures, cameraInfo) {
+    this.MakeScene = function (figures, lights, cameraInfo) {
         this.figures = figures;
         this.cameraInfo = cameraInfo;
         let viewProjectionMatrix = null;
@@ -199,7 +210,7 @@ function MakeRender(canvasId) {
             // Tell WebGL how to convert from clip space to pixels
             gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
-            gl.clearColor(0.0, 0.0, 0.0, 1.0);
+            gl.clearColor(0.03, 0.03, 0.03, 1.0);
             // Clear the canvas AND the depth buffer.
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -212,18 +223,79 @@ function MakeRender(canvasId) {
 
             viewProjectionMatrix = m4.multiply(projectionMatrix, cameraInfo.getMatrix());
 
+            for (const key in lights) {
+                if (lights.hasOwnProperty(key)) {
+                    lights[key].draw();
+                }
+            }
+
             for (const key in figures) {
                 if (figures.hasOwnProperty(key)) {
+                    figures[key].viewPosition = cameraInfo.Position;
                     figures[key].matrix = viewProjectionMatrix;
                     figures[key].draw();
                 }
             }
         }
     }
+
+    this.MakeSpotlight = function() {
+        let shininess = 30;
+        let limit = degreesToRadians(30);
+        let specularColor = [1, 1, 1];
+        let lightColor = [0, 0, 1];
+        let lightPosition = [30, 10, 300];
+        let lightDirection = [];
+        let up = [0, 1, 0];
+        let target = [30, -150, 20];
+    
+
+        this.viewWorldPositionLocation = 
+            gl.getUniformLocation(program, "u_viewWorldPosition");
+        
+        let shininessLocation = 
+            gl.getUniformLocation(program, "u_shininess");
+        let lightColorLocation =
+            gl.getUniformLocation(program, "u_lightColor");
+        let specularColorLocation =
+            gl.getUniformLocation(program, "u_specularColor");
+        let lightDirectionLocation =
+            gl.getUniformLocation(program, "u_lightDirection");
+        let limitLocation =
+            gl.getUniformLocation(program, "u_limit");
+        let lightWorldPositionLocation =
+            gl.getUniformLocation(program, "u_lightWorldPosition");
+    
+        this.draw = () => {
+            let lmat = m4.lookAt(lightPosition, target, up);
+            lightDirection = [-lmat[8], -lmat[9], -lmat[10]];
+    
+            bindLight();
+        }
+    
+        function bindLight() {
+            gl.useProgram(program);
+            // Set the specular
+            gl.uniform1f(shininessLocation, shininess);
+            gl.uniform3fv(specularColorLocation, specularColor);
+    
+            // Set the light.
+            gl.uniform3fv(lightWorldPositionLocation, lightPosition);
+            gl.uniform3fv(lightColorLocation, lightColor);
+    
+            // Set Spotlight
+            gl.uniform3fv(lightDirectionLocation, lightDirection);
+            gl.uniform1f(limitLocation, Math.cos(limit));
+        }
+    }
+    
+    this.compileProgram = function (vertexShaderId, fragmentShaderId){
+        program = webglUtils.createProgramFromScripts(gl, [vertexShaderId, fragmentShaderId]);
+    }
 }
 
 function MakeCameraControl(cameraPosition, target, degreesFieldOfView) {
-    this.cameraPosition = cameraPosition;
+    this.Position = cameraPosition;
     this.target = target;
     this.RadiansfieldOfView = degreesToRadians(degreesFieldOfView);
 

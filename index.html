@@ -15,6 +15,7 @@
 		attribute vec3 a_normal;
 
 		uniform vec3 u_lightWorldPosition;
+		uniform vec3 u_viewWorldPosition;
 
 		uniform mat4 u_world;
 		uniform mat4 u_worldViewProjection;
@@ -23,6 +24,7 @@
 		varying vec3 v_normal;
 		
 		varying vec3 v_surfaceToLight;
+		varying vec3 v_surfaceToView;
 
 		void main() {
 			// Multiply the position by the matrix.
@@ -34,6 +36,8 @@
 			vec3 surfaceWorldPosition = (u_worldInverseTranspose * a_position).xyz;
 		
 			v_surfaceToLight = u_lightWorldPosition - surfaceWorldPosition;
+
+			v_surfaceToView = u_viewWorldPosition - surfaceWorldPosition;
 		}
            
 	</script>
@@ -44,9 +48,15 @@
 		// Passed in from the vertex shader.
 		varying vec3 v_normal;
 		varying vec3 v_surfaceToLight;
+		varying vec3 v_surfaceToView;
 
 		uniform vec4 u_color;
-		
+		uniform float u_shininess;
+		uniform vec3 u_lightColor;
+		uniform vec3 u_specularColor;
+		uniform vec3 u_lightDirection;
+		uniform float u_limit;
+
 		void main() {
 			// because v_normal is a varying it's interpolated
 			// we it will not be a uint vector. Normalizing it
@@ -54,14 +64,29 @@
 			vec3 normal = normalize(v_normal);
 
 			vec3 surfaceToLightDirection = normalize(v_surfaceToLight);
+			vec3 surfaceToViewDirection = normalize(v_surfaceToView);
+			vec3 halfVector = normalize(surfaceToLightDirection + surfaceToViewDirection);
+			
+			float light = 0.0;
+			float specular = 0.0;
 
-			float light = dot(normal, surfaceToLightDirection);
+			float dotFromDirection = dot(surfaceToLightDirection, -u_lightDirection);
 
+			if (dotFromDirection >= u_limit) {
+				light = dot(normal, surfaceToLightDirection);
+				if (light > 0.0) {
+				  specular = pow(dot(normal, halfVector), u_shininess);
+				}
+			}
+			
 			gl_FragColor = u_color;
 
 			// Lets multiply just the color portion (not the alpha)
 			// by the light
-			gl_FragColor.rgb *= light;
+			gl_FragColor.rgb *= light * u_lightColor;
+
+			// Add Glare 
+			gl_FragColor.rgb += specular * u_specularColor;
 		}
 				   
 	</script>
