@@ -1,101 +1,134 @@
-<!DOCTYPE html>
-<html>
+<canvas id="mainWindow" width="1000," height="500"></canvas>
+<div>
+  <input type="checkbox"  id="blending" name="transparence" />
+  <label for="transparence">Blending </label>
+</div>
 
-<head>
-	<meta charset="utf-8" />
-	<meta http-equiv="X-UA-Compatible" content="IE=edge">
-	<title>WebGL for fun </title>
-	<meta name="viewport" content="width=device-width, initial-scale=1">
-</head>
+<div>
+  <input type="checkbox" id="fog" name="transparence" />
+  <label for="transparence">Fog</label>
+</div>
+Alpha level <input type="text" id="alpha" value="0.5" /><br/>
 
-<body>
-	<canvas id="mainWindow" width=1000, height=500></canvas>
-	<script id="3d-vertex-shader" type="x-shader/x-vertex">
-		attribute vec4 a_position;
-		attribute vec3 a_normal;
 
-		uniform vec3 u_lightWorldPosition;
-		uniform vec3 u_viewWorldPosition;
+<script id="3d-vertex-shader" type="x-shader/x-vertex">
+  attribute vec4 a_position;
+  attribute vec3 a_normal;
+  attribute vec2 a_texcoord;
 
-		uniform mat4 u_world;
-		uniform mat4 u_worldViewProjection;
-		uniform mat4 u_worldInverseTranspose;
-		
-		varying vec3 v_normal;
-		
-		varying vec3 v_surfaceToLight;
-		varying vec3 v_surfaceToView;
+  uniform vec3 u_lightWorldPosition;
+  uniform vec3 u_viewWorldPosition;
 
-		void main() {
-			// Multiply the position by the matrix.
-			gl_Position = u_worldViewProjection * a_position;
+  uniform mat4 u_worldView;
+  uniform mat4 u_worldViewProjection;
+  uniform mat4 u_worldInverseTranspose;
 
-			// orient the normals and pass to the fragment shader
-			v_normal = mat3(u_worldInverseTranspose) * a_normal;
-		
-			vec3 surfaceWorldPosition = (u_worldInverseTranspose * a_position).xyz;
-		
-			v_surfaceToLight = u_lightWorldPosition - surfaceWorldPosition;
+  varying vec3 v_normal;
 
-			v_surfaceToView = u_viewWorldPosition - surfaceWorldPosition;
-		}
-           
-	</script>
+  varying vec3 v_surfaceToLight;
+  varying vec3 v_surfaceToView;
+  varying vec2 v_texcoord;
+  varying float v_eyeDist;
 
-	<script id="3d-fragment-shader" type="notjs">
-		precision mediump float;
+  void main() {
+    // Transform vertex to view-space
+    vec4 vViewPos = u_worldView * a_position;
 
-		// Passed in from the vertex shader.
-		varying vec3 v_normal;
-		varying vec3 v_surfaceToLight;
-		varying vec3 v_surfaceToView;
+    v_eyeDist = abs(vViewPos.z);
+    // Multiply the position by the matrix.
+  	gl_Position = u_worldViewProjection * a_position;
 
-		uniform vec4 u_color;
-		uniform float u_shininess;
-		uniform vec3 u_lightColor;
-		uniform vec3 u_specularColor;
-		uniform vec3 u_lightDirection;
-		uniform float u_limit;
+  	// orient the normals and pass to the fragment shader
+  	v_normal = mat3(u_worldInverseTranspose) * a_normal;
 
-		void main() {
-			// because v_normal is a varying it's interpolated
-			// we it will not be a uint vector. Normalizing it
-			// will make it a unit vector again
-			vec3 normal = normalize(v_normal);
+  	vec3 surfaceWorldPosition = (u_worldInverseTranspose * a_position).xyz;
 
-			vec3 surfaceToLightDirection = normalize(v_surfaceToLight);
-			vec3 surfaceToViewDirection = normalize(v_surfaceToView);
-			vec3 halfVector = normalize(surfaceToLightDirection + surfaceToViewDirection);
-			
-			float light = 0.0;
-			float specular = 0.0;
+  	v_surfaceToLight = u_lightWorldPosition - surfaceWorldPosition;
 
-			float dotFromDirection = dot(surfaceToLightDirection, -u_lightDirection);
+    v_surfaceToView = u_viewWorldPosition - surfaceWorldPosition;
 
-			if (dotFromDirection >= u_limit) {
-				light = dot(normal, surfaceToLightDirection);
-				if (light > 0.0) {
-				  specular = pow(dot(normal, halfVector), u_shininess);
-				}
-			}
-			
-			gl_FragColor = u_color;
+    // Pass the texcoord to the fragment shader.
+    v_texcoord = a_texcoord;
+  }
+</script>
 
-			// Lets multiply just the color portion (not the alpha)
-			// by the light
-			gl_FragColor.rgb *= light * u_lightColor;
+<script id="3d-fragment-shader" type="notjs">
+  precision mediump float;
 
-			// Add Glare 
-			gl_FragColor.rgb += specular * u_specularColor;
-		}
-				   
-	</script>
-	<script src="js/webgl-utils.js"></script>
-	<script src="js/figureGeometry.js"></script>
-	<script src="js/m4.js"></script>
-	<script src="js/webgl-debug.js"></script>
-	<script src="js/main.js "></script>
+  // Passed in from the vertex shader.
+  varying vec3 v_normal;
+  varying vec3 v_surfaceToLight;
+  varying vec3 v_surfaceToView;
 
-</body>
+  // приходит из вершинного шейдера
+  varying vec2 v_texcoord;
 
-</html>
+  varying float v_eyeDist;
+
+  uniform vec4 u_fogColor;
+  uniform float u_fogMaxDist;
+  uniform float u_fogMinDist;
+
+  uniform float u_shininess;
+  uniform vec3 u_lightColor;
+  uniform vec3 u_specularColor;
+  uniform vec3 u_lightDirection;
+  uniform float u_limit;
+  uniform float u_alpha;
+
+  // текстура
+  uniform sampler2D u_texture;
+
+  float computeLinearFogFactor()
+  {
+    float factor;
+
+    // Compute linear fog equation
+    factor = (u_fogMaxDist - v_eyeDist) /
+              (u_fogMaxDist - u_fogMinDist );
+
+    // Clamp in the [0,1] range
+    factor = clamp( factor, 0.0, 1.0 );
+
+    return factor;
+  }
+
+  void main() {
+  	// because v_normal is a varying it's interpolated
+  	// we it will not be a uint vector. Normalizing it
+  	// will make it a unit vector again
+    vec3 normal = normalize(v_normal);
+
+    float fogFactor = computeLinearFogFactor();
+
+  	vec3 surfaceToLightDirection = normalize(v_surfaceToLight);
+  	vec3 surfaceToViewDirection = normalize(v_surfaceToView);
+  	vec3 halfVector = normalize(surfaceToLightDirection + surfaceToViewDirection);
+
+  	float light = 0.0;
+  	float specular = 0.0;
+
+  	float dotFromDirection = dot(surfaceToLightDirection, -u_lightDirection);
+
+  	if (dotFromDirection >= u_limit) {
+  		light = dot(normal, surfaceToLightDirection);
+  		if (light > 0.0) {
+  		  specular = pow(dot(normal, halfVector), u_shininess);
+  		}
+  	}
+
+    vec4 textureColor = texture2D(u_texture, v_texcoord);
+    vec4 baseColor = vec4(textureColor.rgb *  light * u_lightColor, textureColor.a * u_alpha);
+
+    gl_FragColor = u_fogColor *  (1.0 - fogFactor) + baseColor * fogFactor ;
+
+  	// Add Glare
+    gl_FragColor.rgb += specular * u_specularColor;
+
+  }
+</script>
+<script src="js/webgl-utils.js"></script>
+<script src="js/figureGeometry.js"></script>
+<script src="js/m4.js"></script>
+<script src="js/webgl-debug.js"></script>
+<script src="js/main.js "></script>
