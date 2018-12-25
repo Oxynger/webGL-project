@@ -6,8 +6,6 @@ function main() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
 
-  reversePrimitive(primitive.cube);
-
   var gl = canvas.getContext("webgl", { preserveDrawingBuffer: true });
 
   gl = WebGLDebugUtils.makeDebugContext(
@@ -41,16 +39,26 @@ function main() {
 
   lights["SpotLight"] = new MakeSpotlight(mainShader, spotLightInfo);
 
-  figures["letter"] = new MakeObject(
-    gl,
-    mainShader,
-    primitive.cube,
-    positionFInfo
-  );
-
   let cameraInfo = new MakeCameraInfo([0, 100, 300], [0, 0, 0], 60);
   let fog = new MakeFog(mainShader);
-  window.scene = new MakeScene(gl, figures, lights, fog, cameraInfo);
+
+  window.cube = {};
+  fetch("/figure/cubeFigure.json")
+    .then(response => {
+      return response.json();
+    })
+    .then(figure => {
+      cube = figure;
+      cube.Primitive = new Float32Array(cube.Primitive);
+      cube.normals = new Float32Array(cube.normals);
+      cube.texcoord = new Float32Array(cube.texcoord);
+      reversePrimitive(cube);
+
+      figures["cube"] = new MakeObject(gl, mainShader, cube, positionFInfo);
+      window.scene = new MakeScene(gl, figures, lights, fog, cameraInfo);
+      requestAnimationFrame(drawScene);
+    })
+    .catch(console.log);
 
   // Draw the scene.
   function drawScene(now) {
@@ -59,8 +67,6 @@ function main() {
     // Call drawScene again next frame
     requestAnimationFrame(drawScene);
   }
-
-  requestAnimationFrame(drawScene);
 }
 
 function MakeShader(gl, vertexShaderId, fragmentShaderId) {
@@ -179,7 +185,7 @@ function MakeScene(gl, figures, lights, fog, cameraInfo) {
 
   let before = 0;
 
-  this.figures["letter"].shader.setUniformLocation("u_viewWorldPosition");
+  this.figures["cube"].shader.setUniformLocation("u_viewWorldPosition");
 
   this.draw = function(now) {
     // time in second
@@ -190,7 +196,7 @@ function MakeScene(gl, figures, lights, fog, cameraInfo) {
     before = now;
 
     // Every frame increase the rotation a little.
-    this.figures["letter"].rotate(deleyTime);
+    this.figures["cube"].rotate(deleyTime);
     //cameraInfo.Position[2] += Math.sin(now);
     // Tell WebGL how to convert from clip space to pixels
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
@@ -201,13 +207,14 @@ function MakeScene(gl, figures, lights, fog, cameraInfo) {
       gl.disable(gl.DEPTH_TEST);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-      figures["letter"].setAlpha(
+      figures["cube"].setAlpha(
         parseFloat(document.getElementById("alpha").value)
       );
     } else {
       gl.disable(gl.BLEND);
       gl.enable(gl.CULL_FACE);
       gl.enable(gl.DEPTH_TEST);
+      figures["cube"].setAlpha(1);
     }
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -305,7 +312,7 @@ function MakeSpotlight(shader, spotLightInfo) {
 function MakeFog(shader) {
   this.maxDistance = 1000;
   this.minDistance = 1000;
-  this.color = [255, 0, 0, 1];
+  this.color = [128, 128, 0, 1];
 
   shader.setUniformLocation("u_fogColor");
   shader.setUniformLocation("u_fogMaxDist");
@@ -393,7 +400,7 @@ function MakeObject(gl, shader, GeometryFigure, position) {
     shader.bindInt("u_texture", 0);
     shader.bindFloat("u_alpha", this.alpha);
 
-    // Bind shader figures letter with camera position
+    // Bind shader figures cube with camera position
     shader.bindVerctor3("u_viewWorldPosition", this.viewPosition.Position);
     shader.bindMatrix4("u_worldView", this.viewPosition.getMatrix());
 

@@ -262,7 +262,7 @@ var primitive = {
 			-1, 0, 0,
 			-1, 0, 0,
       -1, 0, 0]),
-    texcoord: new Float32Array([
+        texcoord: new Float32Array([
         // left column front
         0, 0,
         0, 1,
